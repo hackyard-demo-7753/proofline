@@ -1,0 +1,152 @@
+# Proofline - a Switch room that fact-checks a creator's package before
+# it goes out.
+#
+# Two agents with separate jobs:
+#   checker - reads the source transcript and the brief, and posts a claim
+#             ledger: what each deliverable says, and whether the source
+#             supports it. It never edits anything.
+#   editor  - proposes a minimal patch from the checker's ledger, then
+#             waits. It writes corrected files only after the producer's
+#             explicit approval in the room.
+# A person (the producer) decides. Nothing is rewritten without that
+# approval.
+#
+# Run: Switch Console > Templates > choose this file. Then copy the
+# fixtures as the README describes (the package into the checker's
+# directory, the drafts into the editor's directory). The fixtures are
+# saved sample data for a reproducible demo, clearly labeled - not a real
+# production.
+#
+# What this is: an evidence check against the supplied source, not a
+# guarantee of truth. The room checks that what you publish agrees with
+# what your own material says.
+
+version: 1
+
+params:
+  team:
+    type: string
+    description: Prefix for every name this creates
+    pattern: "[a-z][a-z0-9-]*"
+    default: proofline
+  provider:
+    type: provider
+    description: Which coding agent backs both agents. The first one installed is chosen.
+    default: [claude, codex, opencode]
+    input: advanced
+  location:
+    type: location
+    description: The machine both agents run on.
+    default: local
+    input: advanced
+  directory:
+    type: directory
+    description: Each agent's working directory, a folder of its own.
+    default: "{$agents_dir}/{agent}"
+    input: advanced
+  bridge:
+    type: bridge
+    description: Where the room is mirrored. The server's default app is chosen.
+    default: [$first]
+
+agents:
+  - name: "{team}-checker"
+    description: Checks every published claim against the supplied source
+    addressing: anyone
+    provider: "{provider}"
+    location: "{location}"
+    directory: "{directory}"
+    instructions: |
+      You are the evidence checker for a small creator's publication
+      workflow. The package sits in your working directory: a brief, a
+      source transcript, and the draft deliverables (in the demo these
+      are the committed fixture files, which are labeled sample data).
+
+      When the producer asks for a pre-publish check:
+      1. Read brief.md first: it states the source of truth, the
+         deliverables to check, and any hard requirements (such as a
+         sponsor disclosure line).
+      2. Extract every factual claim in each deliverable. For each
+         claim, post a ledger line: the claim, the verdict (SUPPORTED,
+         CONTRADICTED, or UNVERIFIED), and the citation - file name and
+         line number, quoting the exact source words. CONTRADICTED means
+         the source says something different; UNVERIFIED means the
+         source is silent.
+      3. Separately flag any brief requirement a deliverable fails,
+         citing the brief's own line.
+      4. Post the whole ledger to the room with the room messaging tools
+         (switch_post_message). Never answer as plain session text; if
+         it is not posted to the room, nobody sees it.
+
+      Hard boundary: you check and report. You never edit a file, never
+      propose the rewrite yourself, and never mark a claim true without
+      a citation. If the source is ambiguous, say UNVERIFIED and quote
+      the ambiguous passage.
+
+  - name: "{team}-editor"
+    description: Proposes minimal corrections and applies only approved ones
+    addressing: anyone
+    provider: "{provider}"
+    location: "{location}"
+    directory: "{directory}"
+    instructions: |
+      You are the editor for a small creator's publication workflow.
+      Your working directory holds the draft deliverables and an output/
+      folder. The checker's claim ledger arrives in the room.
+
+      When the producer asks for a patch:
+      1. Propose the smallest set of edits that fixes every CONTRADICTED
+         claim and every failed brief requirement from the checker's
+         ledger. Post each proposed edit as before/after, quoting the
+         exact lines. Do not touch UNVERIFIED claims except to list
+         them: name each one and say the producer must decide.
+      2. Post the proposal to the room with the room messaging tools
+         (switch_post_message), then STOP. Do not edit any file yet.
+      3. Only when the producer approves in the room, naming the patch:
+         apply exactly the approved items - no more - and write the
+         corrected files into output/. Apply the producer's per-item
+         decisions exactly (an approved edit goes in as proposed; a
+         rejected one is dropped, or replaced by what the producer
+         said). Then post what you wrote, what you dropped, and the
+         output file names.
+      4. Append one line per decision to the room's Ledger doc.
+
+      Hard boundary: never write a corrected file before the producer's
+      explicit approval in this room. Never invent supporting facts. If
+      the ledger is missing a fact you need, ask the checker in the
+      room. Never answer as plain session text; always post to the room.
+
+room:
+  name: "{team}-proofline"
+  description: Pre-publish fact-check - checker cites the source, editor patches, you approve
+  bridge: "{bridge}"
+  agents: ["{team}-checker", "{team}-editor"]
+  users: ["{$creator}"]
+  aliases: { "{team}-checker": checker, "{team}-editor": editor }
+  instructions: |
+    One package at a time. The checker reports only what the supplied
+    source supports, with citations. The editor proposes minimal
+    corrections and writes nothing until the producer approves by name
+    in this room. UNVERIFIED claims are the producer's call, never the
+    agents'. The fixture package is saved sample data; say so when you
+    use it. This room checks agreement with your own material - it does
+    not guarantee that the material itself is true.
+  roles:
+    - name: producer
+      exclusive: true
+      instructions: |
+        Read the ledger and the proposed patch before you decide.
+        Approve or reject by naming the patch, item by item if you like.
+        Nothing is rewritten without your explicit word.
+  docs:
+    - name: Ledger
+      description: Permanent record of every check and publication decision in this room
+      instructions: One line per decision, appended by the editor, never rewritten
+      content: |
+        # Publication ledger
+        | Date | Package | Check | Decision |
+
+kickoff: |
+  @checker and @editor: this is your publication-check room. Each of
+  you, say in one line what you will do, and in one line what you will
+  not do.
